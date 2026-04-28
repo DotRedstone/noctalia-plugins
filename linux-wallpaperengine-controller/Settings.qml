@@ -263,7 +263,7 @@ ColumnLayout {
               id: dropIndicator
               width: 0
               height: 3
-              radius: 1.5
+              radius: Style.radiusXS
               color: Color.mPrimary
               visible: badgeEditorContainer.dragStarted && badgeEditorContainer.dropTargetIndex !== -1
               z: 10
@@ -275,7 +275,7 @@ ColumnLayout {
               height: ghostRow.implicitHeight + Style.marginM * 2
               radius: Style.radiusM
               color: Color.mPrimary
-              border.width: 1
+              border.width: Style.borderS
               border.color: Qt.alpha(Color.mOnPrimary, 0.18)
               opacity: 0.9
               visible: false
@@ -327,7 +327,7 @@ ColumnLayout {
                   height: badgeCardRow.implicitHeight + Style.marginS * 2
                   radius: Style.radiusM
                   color: Qt.alpha(Color.mSurfaceVariant, 0.6)
-                  border.width: 1
+                  border.width: Style.borderS
                   border.color: badgeDragHandleMouseArea.containsMouse
                     ? Qt.alpha(Color.mPrimary, 0.55)
                     : Qt.alpha(Color.mOutline, 0.35)
