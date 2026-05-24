@@ -11,9 +11,10 @@ Item {
     property string providerIcon: "ai"
     property bool enabled: false
     property bool ready: false
+    property string usageStatusText: ""
 
     property real rateLimitPercent: -1
-    property string rateLimitLabel: "Weekly (7-day)"
+    property string rateLimitLabel: pluginApi?.tr("providers.codex.7d_window") ?? "Weekly (7-day)"
     property string rateLimitResetAt: ""
     property real secondaryRateLimitPercent: -1
     property string secondaryRateLimitLabel: ""
@@ -28,13 +29,15 @@ Item {
     property int totalPrompts: 0
     property int totalSessions: 0
     property var modelUsage: ({})
+    property var quotas: []
 
     property string tierLabel: ""
-    property string authHelpText: "Run `codex` to authenticate."
+    property string authHelpText: pluginApi?.tr("providers.codex.auth_help") ?? "Run `codex` to authenticate."
     property bool hasLocalStats: true
 
     property string configModel: ""
     property var providerSettings: ({})
+    property bool hasCachedUsage: false
 
     function resolvePath(p) {
         if (p && p.startsWith("~"))
@@ -42,23 +45,15 @@ Item {
         return p;
     }
 
-    function localDateString() {
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, "0");
-        const d = String(now.getDate()).padStart(2, "0");
-        return y + "-" + m + "-" + d;
-    }
-
     FileView {
-        id: historyFile
-        path: root.resolvePath("~/.codex/history.jsonl")
+        id: usageFile
+        path: root.resolvePath("~/.cache/noctalia/model-usage/codex.json")
         watchChanges: true
         onFileChanged: reload()
-        onLoaded: root.parseHistory(text())
+        onLoaded: root.parseUsage(text())
         onLoadFailed: error => {
             if (error === FileViewError.FileNotFound)
-                Logger.e("model-usage/codex", "history.jsonl not found");
+                Logger.e("model-usage/codex", "codex.json not found");
         }
     }
 
@@ -74,38 +69,6 @@ Item {
         }
     }
 
-    Process {
-        id: sessionLister
-        command: ["find", root.resolvePath("~/.codex/sessions"), "-type", "f", "-name", "*.jsonl"]
-        running: false
-        stdout: StdioCollector {
-            id: sessionListerOutput
-            onStreamFinished: {
-                const output = text;
-                if (output)
-                    root.parseSessionList(output);
-            }
-        }
-    }
-
-    property var sessionPaths: []
-    property int sessionPathIndex: -1
-    property bool sessionSearchInProgress: false
-    property string latestSessionPath: ""
-    FileView {
-        id: latestSessionFile
-        path: root.latestSessionPath
-        watchChanges: true
-        onFileChanged: reload()
-        onLoaded: root.parseSessionData(text())
-        onLoadFailed: error => {
-            if (error === FileViewError.FileNotFound) {
-                Logger.e("model-usage/codex", "Session file not found:", root.latestSessionPath);
-                root.loadPreviousSessionFile();
-            }
-        }
-    }
-
     FileView {
         id: authFile
         path: root.resolvePath("~/.codex/auth.json")
@@ -118,47 +81,78 @@ Item {
         }
     }
 
+    Process {
+        id: collectorProcess
+        command: ["codex-usage-json"]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (text)
+                    root.parseUsage(text);
+            }
+        }
+        onExited: (code, status) => {
+            if (code !== 0) {
+                if (!root.hasCachedUsage)
+                    root.ready = false;
+                root.usageStatusText = "codex-usage-json exited with code " + code;
+                Logger.e("model-usage/codex", root.usageStatusText);
+            }
+        }
+    }
+
     Timer {
         interval: 60 * 1000
         running: root.enabled
         repeat: true
-        onTriggered: root.scanSessions()
+        onTriggered: root.refresh()
     }
 
     onEnabledChanged: {
         if (enabled)
-            scanSessions();
+            refresh();
     }
 
-    function parseHistory(content) {
+    function parseUsage(content) {
         try {
-            const now = new Date();
-            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
-            const lines = content.split("\n");
-            let prompts = 0;
-            const sessions = {};
-
-            for (let i = lines.length - 1; i >= 0; i--) {
-                const line = lines[i].trim();
-                if (!line)
-                    continue;
-                try {
-                    const entry = JSON.parse(line);
-                    if ((entry.ts ?? 0) < startOfDay)
-                        break;
-                    prompts++;
-                    if (entry.session_id)
-                        sessions[entry.session_id] = true;
-                } catch (e) {
-                    continue;
-                }
+            const data = JSON.parse(content);
+            if (data.ok === false) {
+                const err = data.error ?? "fetch failed";
+                root.usageStatusText = root.hasCachedUsage ? err + " (showing cached data)" : err;
+                root.ready = root.hasCachedUsage;
+                return;
             }
 
-            root.todayPrompts = prompts;
-            root.todaySessions = Object.keys(sessions).length;
+            root.usageStatusText = "";
+            root.todayPrompts = data.todayPrompts ?? 0;
+            root.todaySessions = data.todaySessions ?? 0;
+            root.todayTotalTokens = data.todayTotalTokens ?? 0;
+            root.todayTokensByModel = data.todayTokensByModel ?? {};
+            root.recentDays = data.recentDays ?? [];
+            root.totalPrompts = data.totalPrompts ?? 0;
+            root.totalSessions = data.totalSessions ?? 0;
+            root.modelUsage = data.modelUsage ?? {};
+            root.quotas = data.quotas ?? [];
+
+            root.rateLimitPercent = data.rateLimitPercent ?? -1;
+            root.rateLimitLabel = localizeRateLimitLabel(data.rateLimitLabel ?? "");
+            root.rateLimitResetAt = data.rateLimitResetAt ?? "";
+            root.secondaryRateLimitPercent = data.secondaryRateLimitPercent ?? -1;
+            root.secondaryRateLimitLabel = localizeRateLimitLabel(data.secondaryRateLimitLabel ?? "");
+            root.secondaryRateLimitResetAt = data.secondaryRateLimitResetAt ?? "";
+
+            root.quotas = root.quotas.map(q => ({
+                label: localizeRateLimitLabel(q.label ?? ""),
+                percent: q.percent ?? -1,
+                resetAt: q.resetAt ?? ""
+            }));
+
             root.ready = true;
+            root.hasCachedUsage = true;
         } catch (e) {
-            Logger.e("model-usage/codex", "Failed to parse history.jsonl:", e);
+            Logger.e("model-usage/codex", "Failed to parse codex usage:", e);
+            if (!root.hasCachedUsage)
+                root.ready = false;
         }
     }
 
@@ -182,130 +176,38 @@ Item {
         }
     }
 
-    function scanSessions() {
-        sessionLister.running = true;
-    }
-
-    function parseSessionList(output) {
-        if (!output)
-            return;
-        const lines = output.trim().split("\n");
-        const unique = {};
-        for (let i = 0; i < lines.length; i++) {
-            const file = lines[i].trim();
-            if (!file.endsWith(".jsonl"))
-                continue;
-            unique[file] = true;
-        }
-
-        const files = Object.keys(unique).sort();
-        if (files.length === 0) {
-            root.sessionPaths = [];
-            root.sessionPathIndex = -1;
-            root.sessionSearchInProgress = false;
-            return;
-        }
-
-        root.sessionPaths = files.slice(Math.max(0, files.length - 16));
-        root.sessionPathIndex = root.sessionPaths.length - 1;
-        root.sessionSearchInProgress = true;
-        const newestPath = root.sessionPaths[root.sessionPathIndex];
-        if (root.latestSessionPath === newestPath)
-            latestSessionFile.reload();
-        else
-            root.latestSessionPath = newestPath;
-    }
-
-    function loadPreviousSessionFile() {
-        if (!root.sessionSearchInProgress)
-            return;
-        root.sessionPathIndex = root.sessionPathIndex - 1;
-        if (root.sessionPathIndex >= 0) {
-            root.latestSessionPath = root.sessionPaths[root.sessionPathIndex];
-        } else {
-            root.sessionSearchInProgress = false;
-        }
-    }
-
-    function parseSessionData(content) {
-        try {
-            const lines = content.split("\n");
-            let lastTokenCount = null;
-
-            for (let i = lines.length - 1; i >= 0; i--) {
-                const line = lines[i].trim();
-                if (!line)
-                    continue;
-                try {
-                    const entry = JSON.parse(line);
-                    let candidate = null;
-                    if (entry.type === "event_msg" && entry.payload?.type === "token_count")
-                        candidate = entry.payload;
-                    else if (entry.type === "token_count")
-                        candidate = entry;
-                    else if (entry.type === "response_item" && entry.payload?.type === "event_msg" && entry.payload?.payload?.type === "token_count")
-                        candidate = entry.payload.payload;
-
-                    if (candidate) {
-                        lastTokenCount = candidate;
-                        break;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-
-            if (!lastTokenCount) {
-                root.loadPreviousSessionFile();
-                return;
-            }
-
-            const rl = lastTokenCount.rate_limits?.primary;
-            if (rl) {
-                root.rateLimitPercent = (rl.used_percent ?? 0) / 100;
-                if (rl.window_minutes === 10080)
-                    root.rateLimitLabel = "Weekly (7-day)";
-                else
-                    root.rateLimitLabel = Math.round(rl.window_minutes / 60) + "h window";
-                if (rl.resets_at) {
-                    const resetDate = new Date(rl.resets_at * 1000);
-                    root.rateLimitResetAt = resetDate.toISOString();
-                }
-            }
-
-            const usage = lastTokenCount.info?.total_token_usage;
-            if (usage) {
-                const input = usage.input_tokens ?? 0;
-                const output = usage.output_tokens ?? 0;
-                const cached = usage.cached_input_tokens ?? 0;
-                const reasoning = usage.reasoning_output_tokens ?? 0;
-                root.todayTotalTokens = input + output + cached + reasoning;
-
-                const modelName = root.configModel || "codex";
-                root.todayTokensByModel = {};
-                root.todayTokensByModel[modelName] = root.todayTotalTokens;
-
-                root.modelUsage = {};
-                root.modelUsage[modelName] = {
-                    inputTokens: input,
-                    outputTokens: output + reasoning,
-                    cacheReadInputTokens: cached,
-                    cacheCreationInputTokens: 0
-                };
-            }
-
-            root.sessionSearchInProgress = false;
-        } catch (e) {
-            Logger.e("model-usage/codex", "Failed to parse session data:", e);
-            root.loadPreviousSessionFile();
-        }
-    }
-
     function refresh() {
-        historyFile.reload();
+        usageFile.reload();
         configFile.reload();
         authFile.reload();
-        root.scanSessions();
+        collectorProcess.running = true;
+    }
+
+    function localizeRateLimitLabel(label) {
+        if (label === "5h window")
+            return "5 小时使用限额";
+        if (label === "7d window")
+            return "每周使用限额";
+        if (label.endsWith("h window"))
+            return label.replace("h window", pluginApi?.tr("providers.codex.h_window") ?? "h window");
+        return label;
+    }
+
+    function formatQuotaResetText(quota) {
+        const isoTimestamp = quota?.resetAt ?? "";
+        if (!isoTimestamp)
+            return "";
+        const reset = new Date(isoTimestamp);
+        if (Number.isNaN(reset.getTime()))
+            return "";
+
+        const label = quota?.label ?? "";
+        const hh = String(reset.getHours()).padStart(2, "0");
+        const mm = String(reset.getMinutes()).padStart(2, "0");
+        if (label === "每周使用限额") {
+            return "重置时间：" + reset.getFullYear() + "年" + (reset.getMonth() + 1) + "月" + reset.getDate() + "日 " + hh + ":" + mm;
+        }
+        return "重置时间：" + hh + ":" + mm;
     }
 
     function formatResetTime(isoTimestamp) {
@@ -315,7 +217,7 @@ Item {
         const now = new Date();
         const diffMs = reset.getTime() - now.getTime();
         if (diffMs <= 0)
-            return "now";
+            return pluginApi?.tr("providers.common.now") ?? "now";
         const hours = Math.floor(diffMs / 3600000);
         const mins = Math.floor((diffMs % 3600000) / 60000);
         if (hours > 24)

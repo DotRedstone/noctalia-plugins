@@ -12,7 +12,7 @@ Item {
     property bool ready: false
 
     property real rateLimitPercent: -1
-    property string rateLimitLabel: "Spending limit"
+    property string rateLimitLabel: pluginApi?.tr("providers.openrouter.spending_limit") ?? "Spending limit"
     property string rateLimitResetAt: ""
     property real secondaryRateLimitPercent: -1
     property string secondaryRateLimitLabel: ""
@@ -27,9 +27,10 @@ Item {
     property int totalPrompts: 0
     property int totalSessions: 0
     property var modelUsage: ({})
+    property var quotas: []
 
     property string tierLabel: ""
-    property string authHelpText: "Check your OpenRouter API key."
+    property string authHelpText: pluginApi?.tr("providers.openrouter.auth_help") ?? "Check your OpenRouter API key."
     property bool hasLocalStats: true
 
     property real usageDaily: 0
@@ -90,17 +91,31 @@ Item {
 
                 if (root.spendingLimit > 0) {
                     root.rateLimitPercent = Math.min(1, Math.max(0, root.usageWeekly / root.spendingLimit));
-                    root.rateLimitLabel = "Spending ($" + root.usageWeekly.toFixed(2) + " / $" + root.spendingLimit.toFixed(2) + ")";
+                    root.rateLimitLabel = (pluginApi?.tr("providers.openrouter.spending_label") ?? "Spending (${spent} / ${limit})")
+                        .replace("${spent}", root.usageWeekly.toFixed(2))
+                        .replace("${limit}", root.spendingLimit.toFixed(2));
                 } else if (root.limitRemaining >= 0 && (root.usageWeekly + root.limitRemaining) > 0) {
                     const budget = root.usageWeekly + root.limitRemaining;
                     root.rateLimitPercent = Math.min(1, Math.max(0, root.usageWeekly / budget));
-                    root.rateLimitLabel = "Budget ($" + root.usageWeekly.toFixed(2) + " / $" + budget.toFixed(2) + ")";
+                    root.rateLimitLabel = (pluginApi?.tr("providers.openrouter.budget_label") ?? "Budget (${spent} / ${budget})")
+                        .replace("${spent}", root.usageWeekly.toFixed(2))
+                        .replace("${budget}", budget.toFixed(2));
                 } else {
                     root.rateLimitPercent = 0;
-                    root.rateLimitLabel = "No spending limit";
+                    root.rateLimitLabel = pluginApi?.tr("providers.openrouter.no_limit") ?? "No spending limit";
                 }
 
-                root.tierLabel = info.is_free_tier ? "Free" : "Paid";
+                const quotas = [];
+                if (root.spendingLimit > 0 || root.limitRemaining >= 0) {
+                    quotas.push({
+                        label: root.rateLimitLabel,
+                        percent: root.rateLimitPercent,
+                        resetAt: root.rateLimitResetAt
+                    });
+                }
+                root.quotas = quotas;
+
+                root.tierLabel = info.is_free_tier ? (pluginApi?.tr("providers.openrouter.free") ?? "Free") : (pluginApi?.tr("providers.openrouter.paid") ?? "Paid");
                 root.ready = true;
             } catch (e) {
                 Logger.e("model-usage/openrouter", "Failed to parse key info:", e);
@@ -268,7 +283,7 @@ Item {
         const now = new Date();
         const diffMs = reset.getTime() - now.getTime();
         if (diffMs <= 0)
-            return "now";
+            return pluginApi?.tr("providers.common.now") ?? "now";
         const hours = Math.floor(diffMs / 3600000);
         const mins = Math.floor((diffMs % 3600000) / 60000);
         if (hours > 24)

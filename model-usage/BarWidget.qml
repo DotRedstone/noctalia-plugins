@@ -25,6 +25,7 @@ Item {
     readonly property real barFontSize: Style.getBarFontSizeForScreen(screenName)
 
     property string barMetric: mainInstance?.barMetric ?? "prompts"
+    property string usageDisplayMode: mainInstance?.usageDisplayMode ?? "usage"
 
     property string displayText: {
         if (!activeProvider)
@@ -37,7 +38,8 @@ Item {
                     return status;
                 return "\u2014";
             }
-            return Math.round(rl * 100) + "%";
+            const val = usageDisplayMode === "remaining" ? (1.0 - rl) : rl;
+            return Math.round(val * 100) + "%";
         }
         if (barMetric === "tokens")
             return mainInstance?.formatTokenCount(activeProvider.todayTotalTokens) ?? "0";
@@ -51,11 +53,13 @@ Item {
         const prompts = activeProvider.todayPrompts;
         const sess = activeProvider.todaySessions;
         const tokens = mainInstance?.formatTokenCount(activeProvider.todayTotalTokens) ?? "0";
-        let tip = name + " \u2014 Today: " + prompts + " prompts, " + sess + " sessions, " + tokens + " tokens";
+        let tip = name + (pluginApi?.tr("bar.tooltip_today") ?? " — Today: ") + prompts + (pluginApi?.tr("bar.tooltip_prompts") ?? " prompts, ") + sess + (pluginApi?.tr("bar.tooltip_sessions") ?? " sessions, ") + tokens + (pluginApi?.tr("bar.tooltip_tokens") ?? " tokens");
         const rl = activeProvider.rateLimitPercent;
-        if (rl >= 0)
-            tip += " \u00b7 " + activeProvider.rateLimitLabel + ": " + Math.round(rl * 100) + "%";
-        else if ((activeProvider.usageStatusText ?? "") !== "")
+        if (rl >= 0) {
+            const val = usageDisplayMode === "remaining" ? (1.0 - rl) : rl;
+            const label = usageDisplayMode === "remaining" ? (pluginApi?.tr("general.usage_display_mode_remaining") ?? "Remaining") : activeProvider.rateLimitLabel;
+            tip += " \u00b7 " + label + ": " + Math.round(val * 100) + "%";
+        } else if ((activeProvider.usageStatusText ?? "") !== "")
             tip += " \u00b7 " + activeProvider.usageStatusText;
         return tip;
     }
@@ -73,10 +77,15 @@ Item {
 
         model: [
             {
-                "label": "Refresh",
+                "label": pluginApi?.tr("bar.context_refresh") ?? "Refresh",
                 "action": "refresh",
                 "icon": "refresh"
             },
+            {
+                "label": pluginApi?.tr("bar.context_settings") ?? "Widget Settings",
+                "action": "widget-settings",
+                "icon": "settings"
+            }
         ]
 
         onTriggered: (action, item) => {
@@ -84,6 +93,8 @@ Item {
             PanelService.closeContextMenu(root.screen);
             if (action === "refresh") {
                 mainInstance?.refresh();
+            } else if (action === "widget-settings") {
+                BarService.openPluginSettings(root.screen, pluginApi.manifest);
             }
         }
     }

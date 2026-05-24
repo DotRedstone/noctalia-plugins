@@ -14,10 +14,10 @@ Item {
     property string usageStatusText: ""
 
     property real rateLimitPercent: -1
-    property string rateLimitLabel: "Weekly (7-day)"
+    property string rateLimitLabel: pluginApi?.tr("providers.claude.weekly_label") ?? "Weekly (7-day)"
     property string rateLimitResetAt: ""
     property real secondaryRateLimitPercent: -1
-    property string secondaryRateLimitLabel: "Session (5-hour)"
+    property string secondaryRateLimitLabel: pluginApi?.tr("providers.claude.session_label") ?? "Session (5-hour)"
     property string secondaryRateLimitResetAt: ""
 
     property int todayPrompts: 0
@@ -29,10 +29,11 @@ Item {
     property int totalPrompts: 0
     property int totalSessions: 0
     property var modelUsage: ({})
+    property var quotas: []
     property var dailyActivity: []
 
     property string tierLabel: ""
-    property string authHelpText: "Run `claude auth login` to restore authoritative usage."
+    property string authHelpText: pluginApi?.tr("providers.claude.auth_help") ?? "Run `claude auth login` to restore authoritative usage."
     property bool hasLocalStats: true
 
     property string oauthAccessToken: ""
@@ -185,15 +186,15 @@ Item {
                 root.clearUsageStatus();
                 root.probeRateLimits();
             } else if (!root.oauthAccessToken) {
-                root.usageStatusText = "Waiting for auth";
+                root.usageStatusText = pluginApi?.tr("providers.claude.waiting_auth") ?? "Waiting for auth";
                 root.clearAuthoritativeRateLimits();
             } else {
-                root.usageStatusText = "Token expired";
+                root.usageStatusText = pluginApi?.tr("providers.claude.token_expired") ?? "Token expired";
                 root.clearAuthoritativeRateLimits();
             }
         } catch (e) {
             Logger.e("model-usage/claude", "Failed to parse credentials.json:", e);
-            root.usageStatusText = "Waiting for auth";
+            root.usageStatusText = pluginApi?.tr("providers.claude.waiting_auth") ?? "Waiting for auth";
             root.clearAuthoritativeRateLimits();
         }
     }
@@ -230,6 +231,7 @@ Item {
         root.secondaryRateLimitPercent = -1;
         root.secondaryRateLimitLabel = "Session (5-hour)";
         root.secondaryRateLimitResetAt = "";
+        root.quotas = [];
     }
 
     function clearUsageStatus() {
@@ -286,10 +288,10 @@ Item {
 
         root.hasAuthoritativeRateLimit = true;
         root.rateLimitPercent = -1;
-        root.rateLimitLabel = "Weekly (7-day)";
+        root.rateLimitLabel = pluginApi?.tr("providers.claude.weekly_label") ?? "Weekly (7-day)";
         root.rateLimitResetAt = "";
         root.secondaryRateLimitPercent = -1;
-        root.secondaryRateLimitLabel = "Session (5-hour)";
+        root.secondaryRateLimitLabel = pluginApi?.tr("providers.claude.session_label") ?? "Session (5-hour)";
         root.secondaryRateLimitResetAt = "";
 
         if (weeklyNorm >= 0)
@@ -309,6 +311,24 @@ Item {
 
         if (sourceLabel)
             root.rateLimitLabel = root.rateLimitLabel + " (" + sourceLabel + ")";
+
+        const quotas = [];
+        if (root.rateLimitPercent >= 0) {
+            quotas.push({
+                label: root.rateLimitLabel,
+                percent: root.rateLimitPercent,
+                resetAt: root.rateLimitResetAt
+            });
+        }
+        if (root.secondaryRateLimitPercent >= 0) {
+            quotas.push({
+                label: root.secondaryRateLimitLabel,
+                percent: root.secondaryRateLimitPercent,
+                resetAt: root.secondaryRateLimitResetAt
+            });
+        }
+        root.quotas = quotas;
+
         return true;
     }
 
@@ -338,7 +358,7 @@ Item {
             }
 
             if (xhr.status === 401 || xhr.status === 403) {
-                root.usageStatusText = "Token expired";
+                root.usageStatusText = pluginApi?.tr("providers.claude.token_expired") ?? "Token expired";
                 root.clearAuthoritativeRateLimits();
                 return;
             }
@@ -363,7 +383,7 @@ Item {
         const now = new Date();
         const diffMs = reset.getTime() - now.getTime();
         if (diffMs <= 0)
-            return "now";
+            return pluginApi?.tr("providers.common.now") ?? "now";
         const hours = Math.floor(diffMs / 3600000);
         const mins = Math.floor((diffMs % 3600000) / 60000);
         if (hours > 24)
@@ -375,13 +395,13 @@ Item {
 
     function probeRateLimits() {
         if (!root.oauthAccessToken || root.authMode !== "oauth") {
-            root.usageStatusText = "Waiting for auth";
+            root.usageStatusText = pluginApi?.tr("providers.claude.waiting_auth") ?? "Waiting for auth";
             root.clearAuthoritativeRateLimits();
             return;
         }
 
         if (root.oauthTokenExpired()) {
-            root.usageStatusText = "Token expired";
+            root.usageStatusText = pluginApi?.tr("providers.claude.token_expired") ?? "Token expired";
             root.clearAuthoritativeRateLimits();
             return;
         }

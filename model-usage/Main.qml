@@ -39,7 +39,13 @@ Item {
         providerSettings: root.pluginSettings?.providers?.zen ?? ({})
     }
 
-    property var providers: [claudeProvider, codexProvider, copilotProvider, openRouterProvider, zenProvider]
+    Antigravity {
+        id: antigravityProvider
+        enabled: root.providerEnabled("antigravity")
+        providerSettings: root.pluginSettings?.providers?.antigravity ?? ({})
+    }
+
+    property var providers: [claudeProvider, codexProvider, copilotProvider, openRouterProvider, zenProvider, antigravityProvider]
 
     property var enabledProviders: {
         const result = [];
@@ -53,6 +59,8 @@ Item {
             result.push(openRouterProvider);
         if (zenProvider.enabled)
             result.push(zenProvider);
+        if (antigravityProvider.enabled)
+            result.push(antigravityProvider);
         return result;
     }
 
@@ -62,7 +70,19 @@ Item {
     property string barDisplayMode: pluginSettings?.barDisplayMode ?? "active"
     property int barCycleIntervalSec: pluginSettings?.barCycleIntervalSec ?? 5
     property string barMetric: pluginSettings?.barMetric ?? "prompts"
+    property string usageDisplayMode: pluginSettings?.usageDisplayMode ?? "usage"
     property int refreshIntervalSec: pluginSettings?.refreshIntervalSec ?? 30
+
+    // [Panel-open refresh]
+    property bool panelRefreshing: false
+    property double lastPanelRefreshMs: 0
+    property int panelRefreshCooldownMs: 60000
+    Timer {
+        id: panelRefreshGuardTimer
+        interval: 1500
+        repeat: false
+        onTriggered: root.panelRefreshing = false
+    }
 
     Timer {
         interval: root.barCycleIntervalSec * 1000
@@ -103,6 +123,18 @@ Item {
         }
     }
 
+    function refreshIfStale() {
+        if (panelRefreshing)
+            return;
+        const now = Date.now();
+        if (lastPanelRefreshMs > 0 && (now - lastPanelRefreshMs) < panelRefreshCooldownMs)
+            return;
+        panelRefreshing = true;
+        lastPanelRefreshMs = now;
+        refreshAll();
+        panelRefreshGuardTimer.restart();
+    }
+
     function formatTokenCount(n) {
         if (n === undefined || n === null)
             return "0";
@@ -118,6 +150,16 @@ Item {
     function friendlyModelName(id) {
         if (!id)
             return "Unknown";
+        if (id === "gpt-5.3-codex")
+            return "GPT 5.3 Codex";
+        if (id === "gpt-5.5")
+            return "GPT 5.5";
+        if (id === "codex-auto-review")
+            return "Codex Auto Review";
+        if (id.startsWith("gpt-")) {
+            const suffix = id.substring(4).replace(/-/g, " ");
+            return "GPT " + suffix.replace(/\b\w/g, c => c.toUpperCase());
+        }
         let name = id.replace(/^claude-/, "");
         name = name.replace(/-\d{8}$/, "");
         const parts = name.split("-");

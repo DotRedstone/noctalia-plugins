@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # color-picker.sh <output-png>
 # Picks a color from screen, outputs "R G B" to stdout.
 # Uses hyprpicker (preferred) or falls back to slurp+grim.

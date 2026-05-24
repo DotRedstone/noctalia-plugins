@@ -28,16 +28,32 @@ Item {
     property int totalPrompts: 0
     property int totalSessions: 0
     property var modelUsage: ({})
+    property var quotas: []
 
     property string tierLabel: ""
-    property string authHelpText: "Run `gh auth login` to re-authenticate."
+    property string authHelpText: pluginApi?.tr("providers.copilot.auth_help") ?? "Run `gh auth login` to re-authenticate."
     property bool hasLocalStats: false
     property string usageStatusText: ""
 
     property string ghToken: ""
+    property string appsOauthToken: ""
     property double lastRefreshAtMs: 0
     property int refreshMinIntervalMs: 5 * 60 * 1000
     property var providerSettings: ({})
+
+    function resolvePath(p) {
+        if (p && p.startsWith("~"))
+            return (Quickshell.env("HOME") ?? "/home") + p.substring(1);
+        return p;
+    }
+
+    FileView {
+        id: copilotAppsFile
+        path: root.resolvePath("~/.config/github-copilot/apps.json")
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.parseAppsOauthToken(text())
+    }
 
     Process {
         id: tokenProcess
@@ -50,9 +66,12 @@ Item {
                 if (token) {
                     root.ghToken = token;
                     root.fetchUsage();
+                } else if (root.appsOauthToken) {
+                    root.ghToken = root.appsOauthToken;
+                    root.fetchUsage();
                 } else {
                     Logger.e("model-usage/copilot", "gh auth token returned empty");
-                    root.usageStatusText = "No token";
+                    root.usageStatusText = pluginApi?.tr("providers.copilot.no_token") ?? "No token";
                     root.ready = false;
                     root.clearRateLimits();
                 }
@@ -61,7 +80,15 @@ Item {
         onExited: (code, status) => {
             if (code !== 0) {
                 Logger.e("model-usage/copilot", "gh auth token failed (exit " + code + ")");
-                root.usageStatusText = "Not authenticated";
+                if (code === 127) {
+                    if (root.appsOauthToken) {
+                        root.ghToken = root.appsOauthToken;
+                        root.fetchUsage();
+                        return;
+                    }
+                    root.usageStatusText = pluginApi?.tr("providers.copilot.gh_missing") ?? "gh CLI not found";
+                } else
+                    root.usageStatusText = pluginApi?.tr("providers.copilot.not_auth") ?? "Not authenticated";
                 root.ready = false;
                 root.clearRateLimits();
             }
@@ -76,12 +103,49 @@ Item {
     }
 
     onEnabledChanged: {
-        if (enabled)
+        if (enabled) {
+            copilotAppsFile.reload();
             refreshToken();
+        }
     }
 
     function refreshToken() {
         tokenProcess.running = true;
+    }
+
+    function parseAppsOauthToken(content) {
+        try {
+            const data = JSON.parse(content);
+            const found = findOauthToken(data);
+            if (found)
+                root.appsOauthToken = found;
+        } catch (e) {
+            // Ignore parse failures; gh token flow remains primary.
+        }
+    }
+
+    function findOauthToken(node) {
+        if (!node)
+            return "";
+        if (typeof node === "object") {
+            if (typeof node.oauth_token === "string" && node.oauth_token.length > 0)
+                return node.oauth_token;
+            if (Array.isArray(node)) {
+                for (let i = node.length - 1; i >= 0; i--) {
+                    const token = findOauthToken(node[i]);
+                    if (token)
+                        return token;
+                }
+                return "";
+            }
+            const keys = Object.keys(node);
+            for (let i = 0; i < keys.length; i++) {
+                const token = findOauthToken(node[keys[i]]);
+                if (token)
+                    return token;
+            }
+        }
+        return "";
     }
 
     function fetchUsage() {
@@ -98,7 +162,7 @@ Item {
                 return;
 
             if (xhr.status === 401 || xhr.status === 403) {
-                root.usageStatusText = "Token invalid";
+                root.usageStatusText = pluginApi?.tr("providers.copilot.token_invalid") ?? "Token invalid";
                 root.ready = false;
                 root.ghToken = "";
                 root.tierLabel = "";
@@ -136,21 +200,28 @@ Item {
         // Paid tier: quota_snapshots
         const snapshots = data.quota_snapshots;
         if (snapshots) {
-            const premium = snapshots.premium_interactions;
-            if (premium && typeof premium.percent_remaining === "number") {
-                const usedPct = Math.min(100, Math.max(0, 100 - premium.percent_remaining));
-                root.rateLimitPercent = usedPct / 100;
-                root.rateLimitLabel = "Premium (" + Math.round(usedPct) + "%)";
-                root.rateLimitResetAt = normalizeResetAt(resetDate);
+            const rows = [];
+            const premium = snapshots.premium_interactions ?? snapshots.premium_requests;
+            const premiumUsedNorm = usageNormFromSnapshot(premium);
+            if (premiumUsedNorm >= 0) {
+                rows.push({
+                    percent: premiumUsedNorm,
+                    label: "Completions / Premium",
+                    resetAt: normalizeResetAt(resetDate)
+                });
             }
 
             const chat = snapshots.chat;
-            if (chat && typeof chat.percent_remaining === "number") {
-                const chatUsed = Math.min(100, Math.max(0, 100 - chat.percent_remaining));
-                root.secondaryRateLimitPercent = chatUsed / 100;
-                root.secondaryRateLimitLabel = "Chat (" + Math.round(chatUsed) + "%)";
-                root.secondaryRateLimitResetAt = normalizeResetAt(resetDate);
+            const chatUsedNorm = usageNormFromSnapshot(chat);
+            if (chatUsedNorm >= 0) {
+                const chatUsedPct = Math.round(chatUsedNorm * 100);
+                rows.push({
+                    percent: chatUsedNorm,
+                    label: "Chat (" + chatUsedPct + "%)",
+                    resetAt: normalizeResetAt(resetDate)
+                });
             }
+            root.applyQuotaRows(rows);
         }
 
         // Free tier: limited_user_quotas
@@ -158,23 +229,48 @@ Item {
             const lq = data.limited_user_quotas;
             const mq = data.monthly_quotas;
             const freeReset = data.limited_user_reset_date ?? "";
+            let chatRow = null;
+            let completionsRow = null;
 
             if (typeof lq.chat === "number" && typeof mq.chat === "number" && mq.chat > 0) {
                 const used = mq.chat - lq.chat;
                 const usedPct = Math.min(100, Math.max(0, Math.round((used / mq.chat) * 100)));
-                root.rateLimitPercent = usedPct / 100;
-                root.rateLimitLabel = "Chat (" + used + "/" + mq.chat + ")";
-                root.rateLimitResetAt = normalizeResetAt(freeReset);
+                chatRow = {
+                    percent: usedPct / 100,
+                    label: "Chat (" + used + "/" + mq.chat + ")",
+                    resetAt: normalizeResetAt(freeReset)
+                };
             }
 
             if (typeof lq.completions === "number" && typeof mq.completions === "number" && mq.completions > 0) {
                 const used = mq.completions - lq.completions;
                 const usedPct = Math.min(100, Math.max(0, Math.round((used / mq.completions) * 100)));
-                root.secondaryRateLimitPercent = usedPct / 100;
-                root.secondaryRateLimitLabel = "Completions (" + used + "/" + mq.completions + ")";
-                root.secondaryRateLimitResetAt = normalizeResetAt(freeReset);
+                completionsRow = {
+                    percent: usedPct / 100,
+                    label: "Completions (" + used + "/" + mq.completions + ")",
+                    resetAt: normalizeResetAt(freeReset)
+                };
             }
+
+            const rows = [];
+            if (completionsRow)
+                rows.push(completionsRow);
+            if (chatRow)
+                rows.push(chatRow);
+            root.applyQuotaRows(rows);
         }
+    }
+
+    function applyQuotaRows(rows) {
+        root.quotas = rows;
+        const first = rows[0] ?? null;
+        const second = rows[1] ?? null;
+        root.rateLimitPercent = first ? first.percent : -1;
+        root.rateLimitLabel = first ? first.label : "Completions";
+        root.rateLimitResetAt = first ? first.resetAt : "";
+        root.secondaryRateLimitPercent = second ? second.percent : -1;
+        root.secondaryRateLimitLabel = second ? second.label : "Chat";
+        root.secondaryRateLimitResetAt = second ? second.resetAt : "";
     }
 
     function formatPlan(plan) {
@@ -184,6 +280,39 @@ Item {
         return p.charAt(0).toUpperCase() + p.slice(1);
     }
 
+    function toNumber(v, fallback) {
+        if (fallback === undefined)
+            fallback = -1;
+        const n = Number(v);
+        return isNaN(n) ? fallback : n;
+    }
+
+    function usageNormFromSnapshot(snapshot) {
+        if (!snapshot)
+            return -1;
+
+        // GitHub may return remaining percent in either 0~100 or 0~1 form.
+        const pr = toNumber(snapshot.percent_remaining, -1);
+        if (pr >= 0) {
+            const remainingPct = pr <= 1 ? pr * 100 : pr;
+            const usedPct = Math.min(100, Math.max(0, 100 - remainingPct));
+            return usedPct / 100;
+        }
+
+        // Fallback to counters if percent_remaining is unavailable.
+        const entitlement = toNumber(snapshot.entitlement, -1);
+        const remaining = toNumber(snapshot.remaining, -1);
+        if (entitlement > 0 && remaining >= 0)
+            return Math.min(1, Math.max(0, (entitlement - remaining) / entitlement));
+
+        const quotaEntitled = toNumber(snapshot.quota_entitled, -1);
+        const quotaRemaining = toNumber(snapshot.quota_remaining, -1);
+        if (quotaEntitled > 0 && quotaRemaining >= 0)
+            return Math.min(1, Math.max(0, (quotaEntitled - quotaRemaining) / quotaEntitled));
+
+        return -1;
+    }
+
     function clearRateLimits() {
         root.rateLimitPercent = -1;
         root.rateLimitLabel = "Premium";
@@ -191,6 +320,7 @@ Item {
         root.secondaryRateLimitPercent = -1;
         root.secondaryRateLimitLabel = "Chat";
         root.secondaryRateLimitResetAt = "";
+        root.quotas = [];
     }
 
     function normalizeResetAt(value) {
@@ -217,7 +347,7 @@ Item {
         const now = new Date();
         const diffMs = reset.getTime() - now.getTime();
         if (diffMs <= 0)
-            return "now";
+            return pluginApi?.tr("providers.common.now") ?? "now";
         const hours = Math.floor(diffMs / 3600000);
         const mins = Math.floor((diffMs % 3600000) / 60000);
         if (hours > 24)

@@ -19,7 +19,7 @@ ColumnLayout {
     spacing: Style.marginL
 
     NText {
-        text: "Model Usage Settings"
+        text: pluginApi?.tr("general.settings_title") ?? "Model Usage Settings"
         pointSize: Style.fontSizeXL
         font.weight: Style.fontWeightBold
         color: Color.mOnSurface
@@ -43,7 +43,7 @@ ColumnLayout {
             spacing: Style.marginM
 
             NText {
-                text: "General"
+                text: pluginApi?.tr("general.section_general") ?? "General"
                 pointSize: Style.fontSizeL
                 font.weight: Style.fontWeightSemiBold
                 color: Color.mPrimary
@@ -54,13 +54,13 @@ ColumnLayout {
                 spacing: Style.marginXS
 
                 NText {
-                    text: "Bar display mode"
+                    text: pluginApi?.tr("general.bar_display_mode") ?? "Bar display mode"
                     pointSize: Style.fontSizeM
                     font.weight: Style.fontWeightSemiBold
                     color: Color.mOnSurface
                 }
                 NText {
-                    text: "Show active provider or cycle between enabled providers"
+                    text: pluginApi?.tr("general.bar_display_mode_desc") ?? "Show active provider or cycle between enabled providers"
                     pointSize: Style.fontSizeXS
                     color: Color.mOnSurfaceVariant
                 }
@@ -70,11 +70,11 @@ ColumnLayout {
                     model: [
                         {
                             key: "active",
-                            name: "Active provider"
+                            name: pluginApi?.tr("general.bar_display_mode_active") ?? "Active provider"
                         },
                         {
                             key: "cycle",
-                            name: "Cycle providers"
+                            name: pluginApi?.tr("general.bar_display_mode_cycle") ?? "Cycle providers"
                         }
                     ]
                     currentKey: editSettings?.barDisplayMode ?? "active"
@@ -90,7 +90,7 @@ ColumnLayout {
                 spacing: Style.marginXS
 
                 NText {
-                    text: "Cycle interval (seconds)"
+                    text: pluginApi?.tr("general.cycle_interval") ?? "Cycle interval (seconds)"
                     pointSize: Style.fontSizeM
                     font.weight: Style.fontWeightSemiBold
                     color: Color.mOnSurface
@@ -112,13 +112,13 @@ ColumnLayout {
                 spacing: Style.marginXS
 
                 NText {
-                    text: "Bar metric"
+                    text: pluginApi?.tr("general.bar_metric") ?? "Bar metric"
                     pointSize: Style.fontSizeM
                     font.weight: Style.fontWeightSemiBold
                     color: Color.mOnSurface
                 }
                 NText {
-                    text: "What number to show in the bar capsule"
+                    text: pluginApi?.tr("general.bar_metric_desc") ?? "What number to show in the bar capsule"
                     pointSize: Style.fontSizeXS
                     color: Color.mOnSurfaceVariant
                 }
@@ -128,15 +128,15 @@ ColumnLayout {
                     model: [
                         {
                             key: "prompts",
-                            name: "Prompts"
+                            name: pluginApi?.tr("general.bar_metric_prompts") ?? "Prompts"
                         },
                         {
                             key: "tokens",
-                            name: "Tokens"
+                            name: pluginApi?.tr("general.bar_metric_tokens") ?? "Tokens"
                         },
                         {
                             key: "usage",
-                            name: "Usage %"
+                            name: pluginApi?.tr("general.bar_metric_usage") ?? "Usage %"
                         }
                     ]
                     currentKey: editSettings?.barMetric ?? "prompts"
@@ -151,13 +151,48 @@ ColumnLayout {
                 spacing: Style.marginXS
 
                 NText {
-                    text: "Refresh interval (seconds)"
+                    text: pluginApi?.tr("general.usage_display_mode") ?? "Percentage display mode"
                     pointSize: Style.fontSizeM
                     font.weight: Style.fontWeightSemiBold
                     color: Color.mOnSurface
                 }
                 NText {
-                    text: "Fallback polling interval when file watch misses changes"
+                    text: pluginApi?.tr("general.usage_display_mode_desc") ?? "Show used percentage or remaining percentage"
+                    pointSize: Style.fontSizeXS
+                    color: Color.mOnSurfaceVariant
+                }
+
+                NComboBox {
+                    Layout.fillWidth: true
+                    model: [
+                        {
+                            key: "usage",
+                            name: pluginApi?.tr("general.usage_display_mode_usage") ?? "Show usage (Used)"
+                        },
+                        {
+                            key: "remaining",
+                            name: pluginApi?.tr("general.usage_display_mode_remaining") ?? "Show remaining (Remaining)"
+                        }
+                    ]
+                    currentKey: editSettings?.usageDisplayMode ?? "usage"
+                    onSelected: key => {
+                        editSettings.usageDisplayMode = key;
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Style.marginXS
+
+                NText {
+                    text: pluginApi?.tr("general.refresh_interval") ?? "Refresh interval (seconds)"
+                    pointSize: Style.fontSizeM
+                    font.weight: Style.fontWeightSemiBold
+                    color: Color.mOnSurface
+                }
+                NText {
+                    text: pluginApi?.tr("general.refresh_interval_desc") ?? "Fallback polling interval when file watch misses changes"
                     pointSize: Style.fontSizeXS
                     color: Color.mOnSurfaceVariant
                 }
@@ -192,7 +227,7 @@ ColumnLayout {
             spacing: Style.marginM
 
             NText {
-                text: "Providers"
+                text: pluginApi?.tr("general.section_providers") ?? "Providers"
                 pointSize: Style.fontSizeL
                 font.weight: Style.fontWeightSemiBold
                 color: Color.mPrimary
@@ -213,13 +248,13 @@ ColumnLayout {
                     }
                 }
                 NText {
-                    text: "Claude Code"
+                    text: pluginApi?.tr("providers.claude_name") ?? "Claude Code"
                     pointSize: Style.fontSizeM
                     color: Color.mOnSurface
                     Layout.fillWidth: true
                 }
                 NText {
-                    text: "Local files"
+                    text: pluginApi?.tr("general.auth_local") ?? "Local files"
                     pointSize: Style.fontSizeXS
                     color: Color.mOnSurfaceVariant
                 }
@@ -240,13 +275,13 @@ ColumnLayout {
                     }
                 }
                 NText {
-                    text: "Codex"
+                    text: pluginApi?.tr("providers.codex_name") ?? "Codex"
                     pointSize: Style.fontSizeM
                     color: Color.mOnSurface
                     Layout.fillWidth: true
                 }
                 NText {
-                    text: "Local files"
+                    text: pluginApi?.tr("general.auth_local") ?? "Local files"
                     pointSize: Style.fontSizeXS
                     color: Color.mOnSurfaceVariant
                 }
@@ -267,13 +302,13 @@ ColumnLayout {
                     }
                 }
                 NText {
-                    text: "Copilot"
+                    text: pluginApi?.tr("providers.copilot_name") ?? "Copilot"
                     pointSize: Style.fontSizeM
                     color: Color.mOnSurface
                     Layout.fillWidth: true
                 }
                 NText {
-                    text: "GitHub auth"
+                    text: pluginApi?.tr("general.auth_github") ?? "GitHub auth"
                     pointSize: Style.fontSizeXS
                     color: Color.mOnSurfaceVariant
                 }
@@ -298,13 +333,13 @@ ColumnLayout {
                         }
                     }
                     NText {
-                        text: "OpenRouter"
+                        text: pluginApi?.tr("providers.openrouter_name") ?? "OpenRouter"
                         pointSize: Style.fontSizeM
                         color: Color.mOnSurface
                         Layout.fillWidth: true
                     }
                     NText {
-                        text: "API key"
+                        text: pluginApi?.tr("general.auth_apikey") ?? "API key"
                         pointSize: Style.fontSizeXS
                         color: Color.mOnSurfaceVariant
                     }
@@ -314,7 +349,7 @@ ColumnLayout {
                     visible: editSettings?.providers?.openrouter?.enabled ?? false
                     Layout.fillWidth: true
                     Layout.leftMargin: Style.marginXL
-                    placeholderText: "OPENROUTER_API_KEY env var or enter key here"
+                    placeholderText: pluginApi?.tr("providers.openrouter_placeholder") ?? "OPENROUTER_API_KEY env var or enter key here"
                     text: editSettings?.providers?.openrouter?.apiKey ?? ""
 
                     onTextChanged: {
@@ -346,13 +381,13 @@ ColumnLayout {
                         }
                     }
                     NText {
-                        text: "Zen (opencode.ai)"
+                        text: pluginApi?.tr("providers.zen_name") ?? "Zen (opencode.ai)"
                         pointSize: Style.fontSizeM
                         color: Color.mOnSurface
                         Layout.fillWidth: true
                     }
                     NText {
-                        text: "API key"
+                        text: pluginApi?.tr("general.auth_apikey") ?? "API key"
                         pointSize: Style.fontSizeXS
                         color: Color.mOnSurfaceVariant
                     }
@@ -362,7 +397,7 @@ ColumnLayout {
                     visible: editSettings?.providers?.zen?.enabled ?? false
                     Layout.fillWidth: true
                     Layout.leftMargin: Style.marginXL
-                    placeholderText: "OPENCODE_ZEN_API_KEY / OPENCODE_API_KEY env var or enter key here"
+                    placeholderText: pluginApi?.tr("providers.zen_placeholder") ?? "OPENCODE_ZEN_API_KEY / OPENCODE_API_KEY env var or enter key here"
                     text: editSettings?.providers?.zen?.apiKey ?? ""
 
                     onTextChanged: {
@@ -372,6 +407,33 @@ ColumnLayout {
                             editSettings.providers.zen = {};
                         editSettings.providers.zen.apiKey = text;
                     }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.marginM
+                NToggle {
+                    checked: editSettings?.providers?.antigravity?.enabled ?? true
+                    onToggled: value => {
+                        if (!editSettings.providers)
+                            editSettings.providers = {};
+                        if (!editSettings.providers.antigravity)
+                            editSettings.providers.antigravity = {};
+                        editSettings.providers.antigravity.enabled = value;
+                        editSettingsChanged();
+                    }
+                }
+                NText {
+                    text: pluginApi?.tr("providers.antigravity_name") ?? "Antigravity"
+                    pointSize: Style.fontSizeM
+                    color: Color.mOnSurface
+                    Layout.fillWidth: true
+                }
+                NText {
+                    text: pluginApi?.tr("general.auth_local") ?? "Local files"
+                    pointSize: Style.fontSizeXS
+                    color: Color.mOnSurfaceVariant
                 }
             }
         }
@@ -390,7 +452,7 @@ ColumnLayout {
         }
 
         NButton {
-            text: "Reset"
+            text: pluginApi?.tr("general.reset_button") ?? "Reset"
             onClicked: {
                 root.editSettings = JSON.parse(JSON.stringify(pluginApi?.manifest?.metadata?.defaultSettings ?? {}));
             }

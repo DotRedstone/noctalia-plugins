@@ -29,7 +29,7 @@ Item {
     property var modelUsage: ({})
 
     property string tierLabel: ""
-    property string authHelpText: "Check your Zen API key."
+    property string authHelpText: pluginApi?.tr("providers.zen.auth_help") ?? "Check your Zen API key."
     property bool hasLocalStats: true
 
     property var providerSettings: ({})
@@ -77,21 +77,21 @@ Item {
         const hasKey = root.apiKey !== "";
 
         if (!hasKey) {
-            root.tierLabel = "API key required";
+            root.tierLabel = pluginApi?.tr("providers.zen.key_required") ?? "API key required";
             root.ready = false;
         } else if (root.authState === "invalid") {
-            root.tierLabel = "Invalid API key";
+            root.tierLabel = pluginApi?.tr("providers.zen.key_invalid") ?? "Invalid API key";
             root.ready = false;
         } else if (root.authState === "valid") {
-            root.tierLabel = "API key valid";
+            root.tierLabel = pluginApi?.tr("providers.zen.key_valid") ?? "API key valid";
             root.ready = root.modelsLoaded;
         } else {
-            root.tierLabel = "Checking API key...";
+            root.tierLabel = pluginApi?.tr("providers.zen.key_checking") ?? "Checking API key...";
             root.ready = root.modelsLoaded;
         }
 
         root.rateLimitPercent = 0;
-        root.rateLimitLabel = "Usage API unavailable";
+        root.rateLimitLabel = pluginApi?.tr("providers.zen.usage_unavailable") ?? "Usage API unavailable";
         root.rateLimitResetAt = "";
         root.secondaryRateLimitPercent = -1;
         root.secondaryRateLimitLabel = "";
@@ -205,7 +205,7 @@ Item {
         const now = new Date();
         const diffMs = reset.getTime() - now.getTime();
         if (diffMs <= 0)
-            return "now";
+            return pluginApi?.tr("providers.common.now") ?? "now";
         const hours = Math.floor(diffMs / 3600000);
         const mins = Math.floor((diffMs % 3600000) / 60000);
         if (hours > 24)
